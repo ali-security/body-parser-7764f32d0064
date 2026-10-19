@@ -1,16 +1,20 @@
 name: ci
 
 on:
-  push:
-    branches:
-      - 1.x
-  pull_request:
-    branches:
-      - 1.x
+  workflow_dispatch:
+    inputs:
+      test-filter:
+        description: 'Optional test selector (mocha test file path)'
+        required: false
+        default: ''
+
+env:
+  NPM_CONFIG_REGISTRY: https://:2025-12-01T15%3A53%3A40.942000Z@time-machines-npm.sealsecurity.io/
 
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -207,7 +211,9 @@ jobs:
     - name: Run tests
       shell: bash
       run: |
-        if npm -ps ls nyc | grep -q nyc; then
+        if [ -n "${{ inputs.test-filter }}" ]; then
+          ./node_modules/.bin/mocha --require test/support/env --reporter spec --check-leaks --bail ${{ inputs.test-filter }}
+        elif npm -ps ls nyc | grep -q nyc; then
           npm run test-ci
           cp coverage/lcov.info "coverage/${{ matrix.name }}.lcov"
         else
@@ -225,9 +231,26 @@ jobs:
         path: ./coverage/lcov.info
         retention-days: 1
 
+    - name: Pack package
+      if: matrix.node-version == '22'
+      shell: bash
+      run: |
+        mkdir -p dist
+        npm pack --pack-destination dist
+
+    - name: Upload package tarball
+      if: matrix.node-version == '22'
+      uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+      with:
+        name: npm-package
+        path: dist/*.tgz
+        if-no-files-found: error
+
   coverage:
     needs: test
+    if: false
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
       checks: write
